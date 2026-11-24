@@ -14,6 +14,7 @@ function fixture() {
   mkdirSync(batch);
   mkdirSync(bin);
   copyFileSync(join(ROOT, 'batch/batch-runner.sh'), join(batch, 'batch-runner.sh'));
+  copyFileSync(join(ROOT, 'batch/batch-classify.sh'), join(batch, 'batch-classify.sh'));
   writeFileSync(join(batch, 'batch-prompt.md'), 'Test prompt');
   writeFileSync(join(batch, 'batch-input.tsv'), 'id\turl\tsource\tnotes\n1\thttps://example.com/1\ttest\tfirst\n2\thttps://example.com/2\ttest\tsecond\n');
   // A real CLI must never run, even if a broken limit accidentally queues work.

@@ -70,6 +70,7 @@ function fixture({ resolver = 'current', externalDataRoot = false } = {}) {
   }
 
   writeFileSync(join(batchDir, 'batch-runner.sh'), SRC);
+  process.getBuiltinModule('node:fs').copyFileSync(new URL('../batch/batch-classify.sh', import.meta.url), join(batchDir, 'batch-classify.sh'));
   chmodSync(join(batchDir, 'batch-runner.sh'), 0o755);
   if (resolver !== 'none') {
     writeFileSync(join(dir, 'path-resolver.mjs'), resolver === 'legacy' ? LEGACY_RESOLVER : RESOLVER);

@@ -83,6 +83,7 @@ jobs:
               'batch/': new Set([
                 'batch/README.md',
                 'batch/aggregate-tokens.mjs',
+                'batch/batch-classify.sh',
                 'batch/batch-prompt.md',
                 'batch/batch-prompt-match.md',
                 'batch/batch-runner.sh',

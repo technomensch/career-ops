@@ -56,7 +56,7 @@ if (!bash) {
   try {
     const batch = join(work, 'batch');
     mkdirSync(batch, { recursive: true });
-    for (const f of ['batch-runner.sh', 'company-scope.mjs', 'batch-prompt.md']) cpSync(join(ROOT, 'batch', f), join(batch, f));
+    for (const f of ['batch-runner.sh', 'batch-classify.sh', 'company-scope.mjs', 'batch-prompt.md']) cpSync(join(ROOT, 'batch', f), join(batch, f));
     chmodSync(join(batch, 'batch-runner.sh'), 0o755);
     for (const d of ['lib']) cpSync(join(ROOT, d), join(work, d), { recursive: true });
     // company-scope.mjs imports normalizeCompany from tracker-utils.mjs (and its siblings)

@@ -14,6 +14,7 @@ function fixture() {
   const batch = join(root, 'batch');
   mkdirSync(batch);
   copyFileSync(join(ROOT, 'batch/batch-runner.sh'), join(batch, 'batch-runner.sh'));
+  process.getBuiltinModule('node:fs').copyFileSync(new URL('../batch/batch-classify.sh', import.meta.url), join(batch, 'batch-classify.sh'));
   writeFileSync(join(batch, 'batch-prompt.md'), 'Test prompt');
   writeFileSync(join(batch, 'batch-input.tsv'), 'id\turl\tsource\tnotes\n1\thttps://example.com/1\ttest\tfirst\n2\thttps://example.com/2\ttest\tsecond\n');
   const run = (args) => spawnSync(getBash(), [join(batch, 'batch-runner.sh'), ...args], {

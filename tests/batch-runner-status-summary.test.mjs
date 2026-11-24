@@ -22,6 +22,7 @@ if (!bash) {
     mkdirSync(batchDir, { recursive: true });
     const runner = join(batchDir, 'batch-runner.sh');
     writeFileSync(runner, SRC);
+    process.getBuiltinModule('node:fs').copyFileSync(new URL('../batch/batch-classify.sh', import.meta.url), join(batchDir, 'batch-classify.sh'));
     chmodSync(runner, 0o755);
     writeFileSync(join(batchDir, 'batch-state.tsv'), [
       'id\turl\tstatus\tstarted_at\tcompleted_at\treport_num\tscore\terror\tretries',

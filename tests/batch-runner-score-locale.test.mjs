@@ -100,6 +100,7 @@ if (!locale) {
     mkdirSync(batchDir, { recursive: true });
     const runner = join(batchDir, 'batch-runner.sh');
     writeFileSync(runner, SRC);
+    writeFileSync(join(batchDir, 'batch-classify.sh'), readFileSync(join(ROOT, 'batch/batch-classify.sh'), 'utf-8').replace(/\r\n/g, '\n'));
     chmodSync(runner, 0o755);
     writeFileSync(
       join(batchDir, 'batch-state.tsv'),

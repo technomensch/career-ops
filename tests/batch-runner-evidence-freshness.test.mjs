@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, chmodSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, chmodSync, copyFileSync } from 'node:fs';
 import { join, delimiter } from 'node:path';
 import { tmpdir } from 'node:os';
 import { getBash, rmSync } from './helpers.mjs';
@@ -35,6 +35,7 @@ function runBatch(status, { mode = 'full' } = {}) {
 
     writeFileSync(join(batchDir, 'batch-runner.sh'), SRC);
     chmodSync(join(batchDir, 'batch-runner.sh'), 0o755);
+    copyFileSync(new URL('../batch/batch-classify.sh', import.meta.url), join(batchDir, 'batch-classify.sh'));
     writeFileSync(join(batchDir, 'batch-prompt.md'), '# Fixture batch worker prompt\n\nURL: {{URL}}\nBatch ID: {{ID}}\n');
     writeFileSync(join(batchDir, 'batch-prompt-match.md'), '# Fixture match worker prompt\n\nURL: {{URL}}\nBatch ID: {{ID}}\n');
     writeFileSync(join(batchDir, 'batch-input.tsv'), [

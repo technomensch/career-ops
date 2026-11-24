@@ -265,6 +265,7 @@ function makeCheckout(base, { realTools }) {
   for (const d of [join(dir, 'batch'), join(dir, 'config'), join(dir, 'modes'), binDir, captureDir]) mkdirSync(d, { recursive: true });
 
   writeFileSync(join(dir, 'batch', 'batch-runner.sh'), RUNNER_SRC);
+  process.getBuiltinModule('node:fs').copyFileSync(new URL('../batch/batch-classify.sh', import.meta.url), join(dir, 'batch', 'batch-classify.sh'));
   chmodSync(join(dir, 'batch', 'batch-runner.sh'), 0o755);
   writeFileSync(join(dir, 'batch', 'batch-prompt.md'), 'Fixture worker prompt.\n\nReport: reports/{{REPORT_NUM}}-{company-slug}-{{DATE}}.md\nTracker: batch/tracker-additions/{{ID}}.tsv\n');
   writeFileSync(join(dir, 'batch', 'batch-input.tsv'), 'id\turl\tsource\tnotes\n1\thttps://example.com/one\tfixture\t-\n');

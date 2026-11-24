@@ -14,6 +14,7 @@ function runFixtureBatch({ offers, parallel, workerSeconds = 0 }) {
   const binDir = join(dir, 'bin');
   for (const d of [batchDir, binDir, join(dir, 'reports'), join(dir, 'data')]) mkdirSync(d, { recursive: true });
   writeFileSync(join(batchDir, 'batch-runner.sh'), SRC);
+  process.getBuiltinModule('node:fs').copyFileSync(new URL('../batch/batch-classify.sh', import.meta.url), join(batchDir, 'batch-classify.sh'));
   writeFileSync(join(batchDir, 'batch-prompt.md'), 'Fixture prompt for {{URL}} {{ID}}\n');
   writeFileSync(join(batchDir, 'batch-input.tsv'), ['id\turl\tsource\tnotes',
     ...Array.from({ length: offers }, (_, i) => `${i + 1}\thttps://jobs.example.com/acme/${i + 1}\tfixture\t-`)].join('\n') + '\n');

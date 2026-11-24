@@ -14262,6 +14262,7 @@ try {
   mkdirSync(fakeBin, { recursive: true });
 
   writeFileSync(join(batchDir, 'batch-runner.sh'), readFileSync(join(ROOT, 'batch/batch-runner.sh'), 'utf-8').replace(/\r\n/g, '\n'));
+  writeFileSync(join(batchDir, 'batch-classify.sh'), readFileSync(join(ROOT, 'batch/batch-classify.sh'), 'utf-8').replace(/\r\n/g, '\n'));
   if (process.platform === 'win32') {
     try { execFileSync(getBash(), ['-c', 'chmod +x batch/batch-runner.sh'], { cwd: tmp }); } catch {}
   } else {
@@ -14365,6 +14366,7 @@ try {
   mkdirSync(fakeBin, { recursive: true });
 
   writeFileSync(join(batchDir, 'batch-runner.sh'), readFileSync(join(ROOT, 'batch/batch-runner.sh'), 'utf-8').replace(/\r\n/g, '\n'));
+  writeFileSync(join(batchDir, 'batch-classify.sh'), readFileSync(join(ROOT, 'batch/batch-classify.sh'), 'utf-8').replace(/\r\n/g, '\n'));
   if (process.platform === 'win32') {
     try { execFileSync(getBash(), ['-c', 'chmod +x batch/batch-runner.sh'], { cwd: tmp }); } catch {}
   } else {
@@ -14444,6 +14446,7 @@ try {
   mkdirSync(fakeBin, { recursive: true });
 
   writeFileSync(join(batchDir, 'batch-runner.sh'), readFileSync(join(ROOT, 'batch/batch-runner.sh'), 'utf-8').replace(/\r\n/g, '\n'));
+  writeFileSync(join(batchDir, 'batch-classify.sh'), readFileSync(join(ROOT, 'batch/batch-classify.sh'), 'utf-8').replace(/\r\n/g, '\n'));
   if (process.platform === 'win32') {
     try { execFileSync(getBash(), ['-c', 'chmod +x batch/batch-runner.sh'], { cwd: tmp }); } catch {}
   } else {
@@ -14520,6 +14523,7 @@ function makeTierFixture(profileYml) {
   mkdirSync(fakeBin, { recursive: true });
 
   writeFileSync(join(batchDir, 'batch-runner.sh'), readFileSync(join(ROOT, 'batch/batch-runner.sh'), 'utf-8').replace(/\r\n/g, '\n'));
+  writeFileSync(join(batchDir, 'batch-classify.sh'), readFileSync(join(ROOT, 'batch/batch-classify.sh'), 'utf-8').replace(/\r\n/g, '\n'));
   if (process.platform === 'win32') {
     try { execFileSync(getBash(), ['-c', 'chmod +x batch/batch-runner.sh'], { cwd: tmp }); } catch {}
   } else {
@@ -14644,6 +14648,7 @@ try {
     // by stripping the trailing invocation line, then call log_discard directly.
     const sourceable = runnerSrc.replace(/\nmain "\$@"\s*$/, '\n');
     writeFileSync(join(batchDir, 'batch-runner.lib.sh'), sourceable);
+    writeFileSync(join(batchDir, 'batch-classify.sh'), readFileSync(join(ROOT, 'batch/batch-classify.sh'), 'utf-8').replace(/\r\n/g, '\n'));
     const script = [
       'set -euo pipefail',
       `source "${toBashPath(join(batchDir, 'batch-runner.lib.sh'))}"`,

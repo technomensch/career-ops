@@ -52,6 +52,7 @@ append_recovery_record() {
   printf '%s\\n' "$@" > recovery
 }
 sleep() { :; }
+source "${join(ROOT, 'batch/batch-classify.sh')}"
 ${functionCode('update_state_retrying')}
 ${functionCode('has_report_file')}
 release_report_num() { printf '%s' "$1" > released; }
@@ -240,6 +241,7 @@ schedule
     const batch = join(work, 'batch');
     mkdirSync(batch);
     writeFileSync(join(batch, 'batch-runner.sh'), runner);
+    writeFileSync(join(batch, 'batch-classify.sh'), read('batch/batch-classify.sh'));
     const url = 'https://jobs.example.test/a-long-posting-path-that-must-remain-visible/12345';
     const question = 'Which agency did this specific posting come through? Please identify the intermediary for this URL.';
     writeFileSync(join(batch, 'batch-state.tsv'),

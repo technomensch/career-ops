@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdtempSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -210,6 +210,7 @@ function runOneOffer(skipPdf) {
   mkdirSync(join(dir, 'data'), { recursive: true });
   writeFileSync(join(batchDir, 'batch-runner.sh'), readFileSync(join(ROOT, 'batch/batch-runner.sh')));
   chmodSync(join(batchDir, 'batch-runner.sh'), 0o755);
+  copyFileSync(join(ROOT, 'batch/batch-classify.sh'), join(batchDir, 'batch-classify.sh'));
   writeFileSync(join(batchDir, 'batch-prompt.md'), 'Fixture prompt for {{URL}}\n');
   writeFileSync(join(batchDir, 'batch-input.tsv'), 'id\turl\tsource\tnotes\n1\thttps://example.com/roles/1\tfixture\t-\n');
   writeFileSync(join(dir, 'reserve-report-num.mjs'), [

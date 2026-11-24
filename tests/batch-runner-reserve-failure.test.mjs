@@ -22,6 +22,7 @@ function fixture() {
   mkdirSync(batch);
   mkdirSync(bin);
   copyFileSync(join(ROOT, 'batch/batch-runner.sh'), join(batch, 'batch-runner.sh'));
+  process.getBuiltinModule('node:fs').copyFileSync(new URL('../batch/batch-classify.sh', import.meta.url), join(batch, 'batch-classify.sh'));
   writeFileSync(join(batch, 'batch-prompt.md'), 'Test prompt');
   // localhost is refused by the JD prefetch guard before curl connects, so the
   // test never touches the network even when the reservation wrongly succeeds.

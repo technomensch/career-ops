@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { getBash, rmSync } from './helpers.mjs';
 
 const source = readFileSync(new URL('../batch/batch-runner.sh', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
@@ -89,6 +90,9 @@ function runLoop({ invoke, dir }, { cap = 300, retries = 0, max = 2, log = '429'
   writeFileSync(join(dir, 'first.log'), log);
   writeFileSync(join(dir, 'second.log'), secondLog);
   return invoke(`${functions}
+    source "${fileURLToPath(new URL('../batch/batch-classify.sh', import.meta.url))}"
+    interrupts=0 MAX_INTERRUPT_RETRIES=3 STATE_FILE=state.tsv
+    release_report_num() { :; }
     RATE_LIMIT_SLEEP=${cap}
     MAX_RETRIES=${max}
     CLI=${cli}
@@ -141,7 +145,7 @@ test('zero, over-cap and session pauses preserve retries and use the existing pa
 }));
 
 test('successful, non-rate-limit and non-Claude workers do not back off', () => fixture(ctx => {
-  for (const options of [{ successAfter: 0 }, { log: 'unrelated failure' }, { cli: 'qwen' }]) {
+  for (const options of [{ successAfter: 0 }, { log: 'unrelated failure\n```json\n{"status": "failed", "error": "x"}\n```' }, { cli: 'qwen' }]) {
     const out = runLoop(ctx, options);
     assert.doesNotMatch(out, /SLEEP:|STATE:/);
     assert.match(out, /END:1:0:false:/);
@@ -151,6 +155,7 @@ test('successful, non-rate-limit and non-Claude workers do not back off', () => 
 test('full runner resumes persisted retries and schedules paused rows only with --resume-paused', () => fixture(({ dir, invoke }) => {
   mkdirSync(join(dir, 'batch'));
   writeFileSync(join(dir, 'batch/batch-runner.sh'), source);
+  writeFileSync(join(dir, 'batch/batch-classify.sh'), readFileSync(new URL('../batch/batch-classify.sh', import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
   writeFileSync(join(dir, 'batch/batch-prompt.md'), 'Fixture prompt');
   writeFileSync(join(dir, 'batch/batch-input.tsv'), 'id\turl\tsource\tnotes\n1\thttps://example.com/job\ttest\tfixture\n');
   // Isolate report allocation and post-run integrations; use the real runner's

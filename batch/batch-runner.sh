@@ -56,6 +56,7 @@ if [[ -f "$PROJECT_DIR/path-resolver.mjs" ]]; then
   fi
 fi
 BATCH_DIR="$SCRIPT_DIR"
+source "$SCRIPT_DIR/batch-classify.sh"
 INPUT_FILE="$BATCH_DIR/batch-input.tsv"
 STATE_FILE="$BATCH_DIR/batch-state.tsv"
 PROMPT_FILE="$BATCH_DIR/batch-prompt.md"
@@ -127,6 +128,7 @@ RESUME_PAUSED=false
 START_FROM=0
 SCOPE_COMPANY=""
 MAX_RETRIES=2
+MAX_INTERRUPT_RETRIES=3
 MIN_SCORE=0
 SKIP_PDF=false
 MODE="full"
@@ -177,6 +179,8 @@ Options:
                        comma-separated). Applies before --limit
   --limit N            Max offers: positive integer; omit for no limit
   --max-retries N      Max retry attempts per offer (default: 2)
+  --max-interrupt-retries N  Max retries per offer for environment interruptions
+                       (signal kill, sleep/network errors); separate from --max-retries (default: 3)
   --min-score N        Skip PDF/tracker for offers scoring below N (default: 0 = off)
   --skip-pdf           Skip PDF generation entirely (write ❌ in tracker PDF column)
   --worker-timeout N   Stop a worker after N seconds and record it as failed
@@ -256,6 +260,14 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --max-retries) MAX_RETRIES="$2"; shift 2 ;;
+    --max-interrupt-retries)
+      if [[ $# -lt 2 ]] || ! [[ "$2" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: --max-interrupt-retries must be a non-negative integer."
+        exit 1
+      fi
+      MAX_INTERRUPT_RETRIES="$2"
+      shift 2
+      ;;
     --min-score) MIN_SCORE="$2"; shift 2 ;;
     --skip-pdf) SKIP_PDF=true; shift ;;
     --mode)
@@ -454,7 +466,7 @@ check_status_prerequisites() {
 # Initialize state file if it doesn't exist
 init_state() {
   if [[ ! -f "$STATE_FILE" ]]; then
-    printf 'id\turl\tstatus\tstarted_at\tcompleted_at\treport_num\tscore\terror\tretries\n' > "$STATE_FILE"
+    printf 'id\turl\tstatus\tstarted_at\tcompleted_at\treport_num\tscore\terror\tretries\tinterrupts\n' > "$STATE_FILE"
   fi
 }
 
@@ -676,6 +688,18 @@ get_status() {
   echo "${status:-none}"
 }
 
+# Get interrupt count for an offer (column 10; legacy 9-column rows read as 0)
+get_interrupts() {
+  local id="$1"
+  if [[ ! -f "$STATE_FILE" ]]; then
+    echo "0"
+    return
+  fi
+  local interrupts
+  interrupts=$(awk -F'\t' -v id="$id" '$1 == id { print $10 }' "$STATE_FILE")
+  echo "${interrupts:-0}"
+}
+
 # Get retry count for an offer
 get_retries() {
   local id="$1"
@@ -825,6 +849,13 @@ STATE_FILE_MODE=$(printf '%o' "$(( 0666 & ~0$(umask) ))")
 # Caller must hold the state lock (run_with_state_lock) while this runs.
 update_state_unlocked() {
   local id="$1" url="$2" status="$3" started="$4" completed="$5" report_num="$6" score="$7" error="$8" retries="$9"
+  # Optional 10th arg: interrupt count. When omitted, the row's existing
+  # count is preserved (legacy 9-column rows read as 0).
+  local has_interrupts=false interrupts=""
+  if (( $# >= 10 )); then
+    has_interrupts=true
+    interrupts="${10}"
+  fi
 
   # batch-state.tsv is tab-separated with one row per line -- a literal tab,
   # newline, or carriage return inside $error (e.g. from a worker's raw error
@@ -848,8 +879,9 @@ update_state_unlocked() {
   chmod "$STATE_FILE_MODE" "$tmp" 2>/dev/null || true
   local found=false
 
-  # Write header
-  head -1 "$STATE_FILE" > "$tmp"
+  # Write header (always the current 10-column form, so a legacy 9-column
+  # file is upgraded in place on its first write)
+  printf 'id\turl\tstatus\tstarted_at\tcompleted_at\treport_num\tscore\terror\tretries\tinterrupts\n' > "$tmp"
 
   # Process existing lines. Don't split a row with `IFS=$'\t' read`: tab is IFS
   # whitespace, so the two tabs around an empty cell (an empty error from a
@@ -858,22 +890,25 @@ update_state_unlocked() {
   # left -- `retries` became the error text and the retry counter was lost.
   # Read the line raw and split on \x1f after translating the tabs, as
   # reconcile_recovery_records does.
-  while IFS= read -r sline; do
-    IFS=$'\x1f' read -r sid surl sstatus sstarted scompleted sreport sscore serror sretries <<< "${sline//$'\t'/$'\x1f'}"
+  local sline
+  while IFS= read -r sline || [[ -n "$sline" ]]; do
+    IFS=$'\x1f' read -r sid surl sstatus sstarted scompleted sreport sscore serror sretries sinterrupts <<< "${sline//$'\t'/$'\x1f'}"
     [[ "$sid" == "id" ]] && continue  # skip header
     if [[ "$sid" == "$id" ]]; then
-      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$id" "$url" "$status" "$started" "$completed" "$report_num" "$score" "$error" "$retries" >> "$tmp"
+      local out_interrupts="${sinterrupts:-0}"
+      [[ "$has_interrupts" == "true" ]] && out_interrupts="${interrupts:-0}"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$id" "$url" "$status" "$started" "$completed" "$report_num" "$score" "$error" "$retries" "$out_interrupts" >> "$tmp"
       found=true
     else
-      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "$sid" "$surl" "$sstatus" "$sstarted" "$scompleted" "$sreport" "$sscore" "$serror" "$sretries" >> "$tmp"
+      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+        "$sid" "$surl" "$sstatus" "$sstarted" "$scompleted" "$sreport" "$sscore" "$serror" "$sretries" "${sinterrupts:-0}" >> "$tmp"
     fi
   done < "$STATE_FILE"
 
   if [[ "$found" == "false" ]]; then
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-      "$id" "$url" "$status" "$started" "$completed" "$report_num" "$score" "$error" "$retries" >> "$tmp"
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+      "$id" "$url" "$status" "$started" "$completed" "$report_num" "$score" "$error" "$retries" "${interrupts:-0}" >> "$tmp"
   fi
 
   if ! mv -f "$tmp" "$STATE_FILE"; then
@@ -905,6 +940,8 @@ RECOVERY_DIR="$BATCH_DIR/batch-state-recovery.d"
 
 append_recovery_record() {
   local id="$1" url="$2" status="$3" started="$4" completed="$5" report_num="$6" score="$7" error="$8" retries="$9"
+  # Optional 10th arg (interrupt count); an empty field means "preserve".
+  local interrupts="${10-}"
   # Same rationale as update_state_unlocked: a literal tab/newline/CR in
   # $error would split this single-line record into extra fields or rows,
   # corrupting the record and the state row it later reconciles into.
@@ -918,8 +955,8 @@ append_recovery_record() {
   mkdir -p "$RECOVERY_DIR" || return 1
   local rec
   rec=$(mktemp "$RECOVERY_DIR/rec-XXXXXX") || return 1
-  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "$id" "$url" "$status" "$started" "$completed" "$report_num" "$score" "$error" "$retries" > "$rec"
+  printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$id" "$url" "$status" "$started" "$completed" "$report_num" "$score" "$error" "$retries" "$interrupts" > "$rec"
 }
 
 # A recovery record is ALWAYS older than whatever $STATE_FILE holds for the
@@ -986,7 +1023,7 @@ reconcile_recovery_records() {
 
   echo "=== Reconciling ${#rec_files[@]} recovery record(s) from a prior interrupted run ==="
   local merged=0 superseded=0 still_failed=0
-  local rid rurl rstatus rstarted rcompleted rreport rscore rerror rretries
+  local rid rurl rstatus rstarted rcompleted rreport rscore rerror rretries rinterrupts
   local rline
   local rc
   for f in "${rec_files[@]}"; do
@@ -998,14 +1035,20 @@ reconcile_recovery_records() {
     # (a non-whitespace unit separator that preserves empty fields) after
     # translating the on-disk tabs to it. Same rationale as process_offer.
     IFS= read -r rline < "$f" || true
-    IFS=$'\x1f' read -r rid rurl rstatus rstarted rcompleted rreport rscore rerror rretries <<< "${rline//$'\t'/$'\x1f'}"
+    IFS=$'\x1f' read -r rid rurl rstatus rstarted rcompleted rreport rscore rerror rretries rinterrupts <<< "${rline//$'\t'/$'\x1f'}"
     if [[ -z "$rid" ]]; then
       echo "    WARN: discarding unreadable recovery record $f" >&2
       rm -f "$f"
       continue
     fi
     rc=0
-    reconcile_one "$rid" "$rurl" "$rstatus" "$rstarted" "$rcompleted" "$rreport" "$rscore" "$rerror" "$rretries" || rc=$?
+    # Legacy 9-field records (and records that did not set interrupts) carry
+    # no count: pass 9 args so the row's existing count is preserved.
+    if [[ -n "$rinterrupts" ]]; then
+      reconcile_one "$rid" "$rurl" "$rstatus" "$rstarted" "$rcompleted" "$rreport" "$rscore" "$rerror" "$rretries" "$rinterrupts" || rc=$?
+    else
+      reconcile_one "$rid" "$rurl" "$rstatus" "$rstarted" "$rcompleted" "$rreport" "$rscore" "$rerror" "$rretries" || rc=$?
+    fi
     if (( rc == 0 )); then
       rm -f "$f"
       merged=$((merged + 1))
@@ -1132,6 +1175,30 @@ mark_paused_rate_limit() {
   BATCH_PAUSED=true
 }
 
+mark_paused_interrupted() {
+  local id="$1" url="$2" started_at="$3" report_num="$4" retries="$5" interrupts="$6" log_file="$7"
+  local completed_at
+  completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  update_state_retrying "$id" "$url" "interrupted_exhausted" "$started_at" "$completed_at" "$report_num" "-" "repeated interruptions; batch paused" "$retries" "$interrupts" || true
+  : > "$PAUSE_FILE"
+  BATCH_PAUSED=true
+}
+
+count_consecutive_interruptions() {
+  local state_file="$1"
+  tail -n +2 "$state_file" 2>/dev/null | sort -t$'\t' -k5 | awk -F'\t' '
+    { statuses[NR] = $3 }
+    END {
+      count = 0
+      for (i = NR; i >= 1; i--) {
+        if (statuses[i] == "interrupted" || statuses[i] == "interrupted_exhausted") count++
+        else break
+      }
+      print count
+    }
+  '
+}
+
 reserve_report_num_unlocked() {
   local id="$1" url="$2" started="$3" retries="$4"
 
@@ -1223,9 +1290,21 @@ process_offer() {
   started_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   local retries
   retries=$(get_retries "$id")
+  local interrupts
+  interrupts=$(get_interrupts "$id")
+  # A re-run of an exhausted job gets a fresh interrupt budget; otherwise one
+  # blip would exhaust it again immediately.
+  local reset_interrupts=false
+  if [[ "$(get_status "$id")" == "interrupted_exhausted" ]]; then
+    interrupts=0
+    reset_interrupts=true
+  fi
   local report_num
   if ! report_num=$(reserve_report_num_retrying "$id" "$url" "$started_at" "$retries"); then
     return 1
+  fi
+  if [[ "$reset_interrupts" == "true" ]]; then
+    update_state_retrying "$id" "$url" "processing" "$started_at" "-" "$report_num" "-" "-" "$retries" "0" || true
   fi
   local date
   date=$(date +%Y-%m-%d)
@@ -1807,6 +1886,41 @@ process_offer() {
       continue
     fi
 
+    # A rate-limit log that got here has exhausted its retry budget: that is a
+    # genuine failure, not an environment interruption to re-run.
+    # 130 (SIGINT) is the user's own Ctrl-C: never an interruption. A parseable
+    # worker verdict beats the signature/no-verdict tiers (a reasoned
+    # `failed` that mentions ENOTFOUND is a real failure); only a signal kill
+    # is classified regardless of the log.
+    if (( exit_code != 130 )) && ! is_rate_limit_log "$log_file" && {
+         is_signal_killed "$exit_code" \
+         || { ! has_worker_terminal_verdict "$log_file" \
+              && { is_interruption_signature_log "$log_file" || [[ $exit_code -ne 0 ]]; }; }
+       }; then
+      if (( interrupts < MAX_INTERRUPT_RETRIES )); then
+        interrupts=$((interrupts + 1))
+        local interrupt_completed_at
+        interrupt_completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        update_state_retrying "$id" "$url" "interrupted" "$started_at" "$interrupt_completed_at" "$report_num" "-" "environment interruption (exit code $exit_code), not a logical failure" "$retries" "$interrupts" || true
+        echo "    🔌 Interrupted (attempt $interrupts/$MAX_INTERRUPT_RETRIES, exit code $exit_code). Retrying..."
+        continue
+      else
+        local exhausted_completed_at
+        exhausted_completed_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        update_state_retrying "$id" "$url" "interrupted_exhausted" "$started_at" "$exhausted_completed_at" "$report_num" "-" "exhausted $MAX_INTERRUPT_RETRIES interrupt retries" "$retries" "$interrupts" || true
+        release_report_num "$report_num"
+        echo "    🔌 Interrupted repeatedly; exhausted $MAX_INTERRUPT_RETRIES interrupt retries."
+        local consecutive
+        consecutive=$(count_consecutive_interruptions "$STATE_FILE")
+        if (( consecutive >= 3 )); then
+          mark_paused_interrupted "$id" "$url" "$started_at" "$report_num" "$retries" "$interrupts" "$log_file"
+          echo "    ⏸️  $consecutive consecutive interruptions; pausing batch."
+        fi
+        terminal_failure_recorded=true
+        break
+      fi
+    fi
+
     break
   done
 
@@ -1831,12 +1945,7 @@ process_offer() {
     # JSON so an unrelated line merely containing the substring
     # `"status": "failed"` can never falsely flip a successful run.
     local worker_result_json
-    worker_result_json=$(awk '
-      /^```json[[:space:]]*$/ { in_block=1; block=""; next }
-      in_block && /^```[[:space:]]*$/ { in_block=0; last=block; next }
-      in_block { block = block $0 "\n" }
-      END { printf "%s", last }
-    ' "$log_file" 2>/dev/null || true)
+    worker_result_json=$(extract_worker_result_json "$log_file")
 
     # Parse status, error, AND score from the same authoritative JSON object
     # in one pass -- score extraction used to be a separate sed regex over
@@ -2146,7 +2255,7 @@ print_summary() {
     return
   fi
 
-  local total=0 completed=0 skipped=0 failed=0 pending=0 needs_confirmation=0
+  local total=0 completed=0 skipped=0 failed=0 pending=0 needs_confirmation=0 interrupted=0 interrupted_exhausted=0
   local score_sum=0 score_count=0
   local -a dealbreaker_lines=()
 
@@ -2165,11 +2274,13 @@ print_summary() {
         ;;
       failed) failed=$((failed + 1)) ;;
       needs_confirmation) needs_confirmation=$((needs_confirmation + 1)) ;;
+      interrupted) interrupted=$((interrupted + 1)) ;;
+      interrupted_exhausted) interrupted_exhausted=$((interrupted_exhausted + 1)) ;;
       *) pending=$((pending + 1)) ;;
     esac
   done < "$STATE_FILE"
 
-  echo "Total: $total | Completed: $completed | Skipped: $skipped | Failed: $failed | Pending: $pending | Needs confirmation: $needs_confirmation"
+  echo "Total: $total | Completed: $completed | Skipped: $skipped | Failed: $failed | Pending: $pending | Needs confirmation: $needs_confirmation | Interrupted: $interrupted | Interrupted (exhausted): $interrupted_exhausted"
 
   if (( ${#dealbreaker_lines[@]} > 0 )); then
     echo "Dealbreaker skips: ${#dealbreaker_lines[@]} (SKIP rows merged; to evaluate one anyway, rerun it in a session and say \"evaluate anyway\")"
@@ -2202,12 +2313,12 @@ print_status_table() {
     return
   fi
 
-  local total=0 completed=0 processing=0 failed=0 pending=0 skipped=0 rate_limited=0 paused_rate_limit=0 needs_confirmation=0
+  local total=0 completed=0 processing=0 failed=0 pending=0 skipped=0 rate_limited=0 paused_rate_limit=0 needs_confirmation=0 interrupted=0 interrupted_exhausted=0
   local score_sum=0 score_count=0
 
   # Read first line to skip header
   local header=true
-  while IFS=$'\t' read -r sid surl sstatus sstarted scompleted sreport sscore serror sretries || [[ -n "$sid" ]]; do
+  while IFS=$'\t' read -r sid surl sstatus sstarted scompleted sreport sscore serror sretries sinterrupts || [[ -n "$sid" ]]; do
     if [[ "$header" == "true" ]]; then
       header=false
       continue
@@ -2232,12 +2343,14 @@ print_status_table() {
       skipped) skipped=$((skipped + 1)) ;;
       rate_limited) rate_limited=$((rate_limited + 1)) ;;
       paused_rate_limit) paused_rate_limit=$((paused_rate_limit + 1)) ;;
+      interrupted) interrupted=$((interrupted + 1)) ;;
+      interrupted_exhausted) interrupted_exhausted=$((interrupted_exhausted + 1)) ;;
       *) pending=$((pending + 1)) ;;
     esac
   done < "$STATE_FILE"
 
   echo "=== Batch Progress ==="
-  echo "Total: $total | Completed: $completed | Processing: $processing | Failed: $failed | Pending: $pending | Skipped: $skipped | Rate Limited: $rate_limited | Paused: $paused_rate_limit | Needs confirmation: $needs_confirmation"
+  echo "Total: $total | Completed: $completed | Processing: $processing | Failed: $failed | Pending: $pending | Skipped: $skipped | Rate Limited: $rate_limited | Paused: $paused_rate_limit | Needs confirmation: $needs_confirmation | Interrupted: $interrupted | Interrupted (exhausted): $interrupted_exhausted"
   if (( score_count > 0 )); then
     local avg
     # LC_ALL=C: under e.g. a German locale awk formats "%.1f" as "4,5"

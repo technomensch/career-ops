@@ -43,6 +43,7 @@ test('two offers with different URLs/report numbers/dates/IDs resolve to a byte-
     mkdirSync(join(dir, 'data'), { recursive: true });
 
     writeFileSync(join(batchDir, 'batch-runner.sh'), SRC);
+    writeFileSync(join(batchDir, 'batch-classify.sh'), readFileSync(new URL('../batch/batch-classify.sh', import.meta.url), 'utf8').replace(/\r\n/g, '\n'));
     chmodSync(join(batchDir, 'batch-runner.sh'), 0o755);
 
     // A fixture prompt exercising every placeholder, with real body text

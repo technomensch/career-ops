@@ -56,6 +56,7 @@ RECOVERY_DIR="$PWD/recovery"
 update_state() { [[ -z "\${FAIL_STATE:-}" ]] || return 1; printf '%s\\n' "$@" > state; }
 append_recovery_record() { [[ -z "\${FAIL_STATE:-}" ]] || return 1; printf '%s\\n' "$@" > recovery; }
 sleep() { :; }
+source "${join(ROOT, 'batch/batch-classify.sh')}"
 ${functionCode('update_state_retrying')}
 ${functionCode('has_report_file')}
 ${functionCode('log_discard')}

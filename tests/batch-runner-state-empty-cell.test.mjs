@@ -21,6 +21,7 @@ function fixture() {
   mkdirSync(batch);
   mkdirSync(bin);
   copyFileSync(join(ROOT, 'batch/batch-runner.sh'), join(batch, 'batch-runner.sh'));
+  process.getBuiltinModule('node:fs').copyFileSync(new URL('../batch/batch-classify.sh', import.meta.url), join(batch, 'batch-classify.sh'));
   writeFileSync(join(batch, 'batch-prompt.md'), 'Test prompt');
   // localhost is refused by the JD prefetch guard before curl connects.
   writeFileSync(join(batch, 'batch-input.tsv'),
@@ -36,8 +37,9 @@ function fixture() {
   for (const name of ['merge-tracker.mjs', 'reconcile-pipeline.mjs', 'verify-pipeline.mjs']) {
     writeFileSync(join(root, name), '// stub: the merge steps are not under test\n');
   }
-  // A worker that dies without a byte of output.
-  writeFileSync(join(bin, 'claude'), '#!/usr/bin/env bash\nexit 1\n', { mode: 0o755 });
+  // A worker that reports a failure but leaves the error empty. (A worker that
+  // dies with NO verdict is classified as interrupted instead, ADR-004.)
+  writeFileSync(join(bin, 'claude'), '#!/usr/bin/env bash\nprintf \'```json\\n{"status": "failed"}\\n```\\n\'\nexit 1\n', { mode: 0o755 });
   return {
     root, batch,
     run: (args) => spawnSync(getBash(), [join(batch, 'batch-runner.sh'), ...args], {
@@ -67,7 +69,7 @@ test('a worker that fails without output keeps the retry count of every state ro
     assert.equal(rows.length, 2, `expected one state row per offer${context}`);
     for (const row of rows) {
       const cells = row.split('\t');
-      assert.equal(cells.length, 9, `row does not have nine cells: ${JSON.stringify(row)}${context}`);
+      assert.equal(cells.length, 10, `row does not have ten cells: ${JSON.stringify(row)}${context}`);
       assert.equal(cells[2], 'failed', `row is not failed: ${JSON.stringify(row)}${context}`);
       assert.equal(cells[8], '1', `retries was lost or shifted: ${JSON.stringify(row)}${context}`);
     }

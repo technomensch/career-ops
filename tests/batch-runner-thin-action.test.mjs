@@ -183,6 +183,7 @@ if (!bash || !detect || !act) {
     const proj = join(work, 'cli');
     mkdirSync(join(proj, 'batch'), { recursive: true });
     writeFileSync(join(proj, 'batch', 'batch-runner.sh'), SRC);
+    process.getBuiltinModule('node:fs').copyFileSync(new URL('../batch/batch-classify.sh', import.meta.url), join(proj, 'batch', 'batch-classify.sh'));
     chmodSync(join(proj, 'batch', 'batch-runner.sh'), 0o755);
     writeFileSync(join(proj, 'batch', 'batch-input.tsv'), 'id\turl\tsource\tnotes\n');
     writeFileSync(join(proj, 'batch', 'batch-prompt.md'), '# prompt\n');

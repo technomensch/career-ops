@@ -380,6 +380,7 @@ try {
     const capture = join(dir, 'captured-system-prompt.md');
     for (const d of [join(dir, 'batch'), join(dir, 'modes'), join(dir, 'config'), binDir]) mkdirSync(d, { recursive: true });
     writeFileSync(join(dir, 'batch', 'batch-runner.sh'), readFileSync(join(ROOT, 'batch', 'batch-runner.sh'), 'utf-8'), { mode: 0o755 });
+    writeFileSync(join(dir, 'batch', 'batch-classify.sh'), readFileSync(join(ROOT, 'batch', 'batch-classify.sh'), 'utf-8'));
     writeFileSync(join(dir, 'batch', 'batch-prompt.md'), 'Full worker prompt fixture.\n');
     writeFileSync(join(dir, 'batch', 'batch-prompt-match.md'), 'Match worker prompt fixture.\n');
     writeFileSync(join(dir, 'batch', 'batch-input.tsv'), 'id\turl\tsource\tnotes\n1\thttps://example.com/one\tfixture\t-\n');

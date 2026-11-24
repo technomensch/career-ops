@@ -31,6 +31,7 @@ export function runBatch({ offers, args = [], src = SRC, rateLimitFirst = true }
     for (const d of [batchDir, binDir, join(dir, 'live'), join(dir, 'reports'), join(dir, 'data')]) mkdirSync(d, { recursive: true });
     writeFileSync(join(batchDir, 'batch-runner.sh'), src);
     chmodSync(join(batchDir, 'batch-runner.sh'), 0o755);
+    process.getBuiltinModule('node:fs').copyFileSync(new URL('../../batch/batch-classify.sh', import.meta.url), join(batchDir, 'batch-classify.sh'));
     writeFileSync(join(batchDir, 'batch-prompt.md'), 'Fixture prompt for {{URL}}\n');
     writeFileSync(join(batchDir, 'batch-input.tsv'), ['id\turl\tsource\tnotes', ...Array.from({ length: offers }, (_, i) => `${i + 1}\thttps://example.com/${i + 1}\tfixture\t-`)].join('\n') + '\n');
     writeFileSync(join(dir, 'reserve-report-num.mjs'), [
@@ -70,6 +71,8 @@ export function runBatch({ offers, args = [], src = SRC, rateLimitFirst = true }
       'echo "start $id live $peak" >> "$FIXTURE_DIR/starts.log"',
       'sleep 1',
       'rm -f "$FIXTURE_DIR/live/$id"',
+      // A reported failure; a silent exit 1 would be classified as an interruption (ADR-004).
+      'printf \'```json\\n{"status": "failed", "error": "fixture"}\\n```\\n\'',
       'exit 1',
     ].join('\n') + '\n');
     chmodSync(join(binDir, 'claude'), 0o755);
